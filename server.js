@@ -9,9 +9,7 @@ const port = 3000;
 const eventsFile = path.join(__dirname, 'events.json');
 const historyFile = path.join(__dirname, 'history.json'); // 修訂歷程文件
 
-app.use(cors({
-  origin: 'https://school-calendar-frontend.vercel.app/' // 限制 CORS 為前端 URL
-}));
+app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
