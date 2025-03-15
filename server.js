@@ -5,22 +5,39 @@ const path = require('path');
 const cors = require('cors');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 const eventsFile = path.join(__dirname, 'events.json');
-const historyFile = path.join(__dirname, 'history.json'); // 修訂歷程文件
+const historyFile = path.join(__dirname, 'history.json');
 
-app.use(cors());
+// 簡單化 CORS 配置，允許所有來源（用於測試）
+app.use(cors({
+  origin: '*', // 臨時允許所有來源，測試後可改回 'https://30913aaa.github.io'
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+  optionsSuccessStatus: 200
+}));
+
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-let events = fs.existsSync(eventsFile) ? JSON.parse(fs.readFileSync(eventsFile, 'utf-8')) : [];
-let history = fs.existsSync(historyFile) ? JSON.parse(fs.readFileSync(historyFile, 'utf-8')) : [];
+// 確保文件存在
+if (!fs.existsSync(eventsFile)) {
+  fs.writeFileSync(eventsFile, JSON.stringify([]), 'utf-8');
+}
+if (!fs.existsSync(historyFile)) {
+  fs.writeFileSync(historyFile, JSON.stringify([]), 'utf-8');
+}
+
+let events = JSON.parse(fs.readFileSync(eventsFile, 'utf-8'));
+let history = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
 
 app.get('/api/events', (req, res) => {
+  console.log('收到 /api/events 請求');
   res.json(events);
 });
 
 app.get('/api/history', (req, res) => {
+  console.log('收到 /api/history 請求');
   res.json(history);
 });
 
@@ -92,13 +109,13 @@ app.post('/admin/add', (req, res) => {
   }
 
   const newEvent = {
-    id: events.length, // 簡單的 ID 分配
+    id: events.length,
     start,
     end: end || start,
     title: { zh: title_zh, en: title_en || "" },
     description: { zh: desc_zh || "", en: desc_en || "" },
     type,
-    grade: grade || ['all-grades'], // 預設全年級
+    grade: grade || ['all-grades'],
     link: link || "",
     revisionHistory: []
   };
@@ -110,7 +127,6 @@ app.post('/admin/add', (req, res) => {
   events.push(newEvent);
   fs.writeFileSync(eventsFile, JSON.stringify(events, null, 2), 'utf-8');
 
-  // 記錄修訂歷程
   const revision = {
     date: new Date().toISOString(),
     action: '新增事件',
