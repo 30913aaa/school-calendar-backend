@@ -1,0 +1,76 @@
+[
+  {
+    "start": "2025-03-15",
+    "title": {
+      "zh": "學校運動會",
+      "en": "School Sports Day"
+    },
+    "description": {
+      "zh": "全校參與的運動會",
+      "en": "A sports day for the whole school"
+    },
+    "type": "activity"
+  },
+  {
+    "start": "2025-03-15",
+    "title": {
+      "zh": "學校運動會",
+      "en": "School Sports Day"
+    },
+    "description": {
+      "zh": "全校參與的運動會",
+      "en": "A sports day for the whole school"
+    },
+    "type": "activity"
+  },
+  {
+    "start": "2025-03-15",
+    "title": {
+      "zh": "中午12:00中學生小論文寫作比賽投稿截止",
+      "en": "12:00 noon Submission deadline for middle school students' essay writing competition"
+    },
+    "description": {
+      "zh": "好",
+      "en": "uu"
+    },
+    "type": "activity"
+  },
+  {
+    "start": "2025-03-15",
+    "title": {
+      "zh": "中午12:00中學生小論文寫作比賽投稿截止",
+      "en": "12:00 noon Submission deadline for middle school students' essay writing competition"
+    },
+    "description": {
+      "zh": "嗨",
+      "en": "dd"
+    },
+    "type": "announcement"
+  },
+  {
+    "start": "2025-03-15",
+    "end": "2025-03-17",
+    "title": {
+      "zh": "春季運動會",
+      "en": ""
+    },
+    "description": {
+      "zh": "",
+      "en": ""
+    },
+    "type": "activity"
+  },
+  {
+    "start": "2025-03-15",
+    "end": "2025-03-18",
+    "title": {
+      "zh": "中午12:00中學生小論文寫作比賽投稿截止",
+      "en": "12:00 noon Submission deadline for middle school students' essay writing competition"
+    },
+    "description": {
+      "zh": "哈",
+      "en": "ee"
+    },
+    "type": "holiday"
+  }
+]
