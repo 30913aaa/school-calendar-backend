@@ -1,13 +1,21 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const { Pool } = require('pg');
+const { Pool } = require('pg'); // 只聲明一次
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-const { Pool } = require('pg');
+// 檢查必要的環境變數
+const requiredEnvVars = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'DB_PORT'];
+requiredEnvVars.forEach(envVar => {
+  if (!process.env[envVar]) {
+    console.error(`缺少必要的環境變數: ${envVar}`);
+    process.exit(1);
+  }
+});
 
+// 配置資料庫連線
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -40,6 +48,44 @@ console.log('嘗試以以下配置連線:', {
   }
 })();
 
+// 初始化資料庫表格
+async function initializeDatabase() {
+  try {
+    const client = await pool.connect();
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS events (
+        id SERIAL PRIMARY KEY,
+        start DATE NOT NULL,
+        end DATE,
+        title_zh TEXT NOT NULL,
+        title_en TEXT,
+        desc_zh TEXT,
+        desc_en TEXT,
+        type TEXT NOT NULL,
+        grade TEXT[],
+        link TEXT
+      )
+    `);
+    console.log('Events 表格已創建或已存在');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS history (
+        id SERIAL PRIMARY KEY,
+        event_id INTEGER REFERENCES events(id),
+        date TIMESTAMP NOT NULL,
+        action TEXT NOT NULL,
+        details TEXT
+      )
+    `);
+    console.log('History 表格已創建或已存在');
+    client.release();
+  } catch (err) {
+    console.error('初始化資料庫時發生錯誤:', err.stack);
+  }
+}
+
+initializeDatabase();
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -57,8 +103,8 @@ app.get('/api/events', async (req, res) => {
     // 將資料格式化為前端期望的結構
     const events = result.rows.map(event => ({
       id: event.id,
-      start: event.start,
-      end: event.end,
+      start: event.start.toISOString().split('T')[0], // 格式化日期
+      end: event.end ? event.end.toISOString().split('T')[0] : null, // 格式化日期
       title: { zh: event.title_zh, en: event.title_en || '' },
       description: { zh: event.desc_zh || '', en: event.desc_en || '' },
       type: event.type,
@@ -67,7 +113,7 @@ app.get('/api/events', async (req, res) => {
     }));
     res.json(events);
   } catch (err) {
-    console.error('無法獲取事件:', err);
+    console.error('無法獲取事件:', err.stack);
     res.status(500).send('伺服器錯誤');
   }
 });
@@ -80,14 +126,14 @@ app.get('/api/history', async (req, res) => {
     const history = result.rows.map(record => ({
       eventId: record.event_id,
       revisions: [{
-        date: record.date,
+        date: record.date.toISOString(), // 格式化日期
         action: record.action,
         details: record.details
       }]
     }));
     res.json(history);
   } catch (err) {
-    console.error('無法獲取歷史記錄:', err);
+    console.error('無法獲取歷史記錄:', err.stack);
     res.status(500).send('伺服器錯誤');
   }
 });
@@ -158,13 +204,13 @@ app.get('/admin', (req, res) => {
 app.post('/admin/add', async (req, res) => {
   const { start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link } = req.body;
   if (!start || !title_zh) {
-    return res.send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
+    return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
   }
 
   const gradeArray = Array.isArray(grade) ? grade : (grade ? [grade] : ['all-grades']);
 
   if (end && end < start) {
-    return res.send('結束日期不能早於開始日期。<br><a href="/admin">返回</a>');
+    return res.status(400).send('結束日期不能早於開始日期。<br><a href="/admin">返回</a>');
   }
 
   try {
@@ -186,9 +232,9 @@ app.post('/admin/add', async (req, res) => {
       [eventId, revision.date, revision.action, revision.details]
     );
 
-    res.send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回管理平台</a>');
+    res.status(201).send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回管理平台</a>');
   } catch (err) {
-    console.error('新增事件失敗:', err);
+    console.error('新增事件失敗:', err.stack);
     res.status(500).send('伺服器錯誤');
   }
 });
