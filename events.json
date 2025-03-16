@@ -9,5 +9,24 @@
     "grade": ["grade-1", "grade-2"],
     "link": "",
     "revisionHistory": []
+  },
+  {
+    "id": 5,
+    "start": "2025-03-11",
+    "end_date": "2025-03-19",
+    "title_zh": "第二次模擬賽",
+    "title_en": "Second mock competition",
+    "description_zh": "",
+    "description_en": "",
+    "type": "important-exam",
+    "grade": ["grade-2", "grade-3"],
+    "link": "https://youtu.be/yi0Fe1AUYsk?si=EWwv0NaVjCePTjr",
+    "revision_history": [
+      {
+        "date": "2025-03-16T08:36:39.087Z",
+        "action": "新增事件",
+        "details": "新增: 第二次模擬賽"
+      }
+    ]
   }
 ]
