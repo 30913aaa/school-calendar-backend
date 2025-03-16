@@ -33,7 +33,7 @@ pool.query(`
     description_zh TEXT,
     description_en TEXT,
     type VARCHAR(50) NOT NULL,
-    grade TEXT[] NOT NULL, -- 改為 TEXT[] 支援陣列
+    grade TEXT[] NOT NULL, -- 確保為 TEXT[] 類型
     link VARCHAR(255),
     revision_history JSONB
   );
