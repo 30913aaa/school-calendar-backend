@@ -133,7 +133,10 @@ app.post('/admin/add', async (req, res) => {
   const endDate = end ? new Date(end).toISOString().split('T')[0] : startDate;
 
   // 確保 grade 是陣列
-  const gradeArray = Array.isArray(grade) ? grade : [grade || 'all-grades'];
+  const gradeArray = Array.isArray(grade) 
+  ? `{${grade.map(g => `"${g}"`).join(",")}}`
+  : `{${grade ? `"${grade}"` : '"all-grades"'}}`;
+
 
   // 準備修訂歷史
   const revision = {
@@ -148,9 +151,10 @@ app.post('/admin/add', async (req, res) => {
 
     // 插入事件
     const eventResult = await pool.query(
-      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link, revision_history) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
+      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link, revision_history) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::TEXT[], $9, $10) RETURNING id',
       [startDate, endDate, title_zh.trim(), title_en || "", desc_zh || "", desc_en || "", type, gradeArray, link || "", revisionHistoryJson]
     );
+    
 
     const eventId = eventResult.rows[0].id;
 
