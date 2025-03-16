@@ -53,7 +53,7 @@ async function initializeDatabase() {
   try {
     const client = await pool.connect();
 
-    // 檢查並創建 events 表（與現有結構保持一致）
+    // 檢查並創建 events 表
     await client.query(`
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
@@ -71,14 +71,12 @@ async function initializeDatabase() {
     `);
     console.log('Events 表格已創建或已存在');
 
-    // 檢查並創建 history 表
+    // 檢查並創建 history 表（與現有結構一致）
     await client.query(`
       CREATE TABLE IF NOT EXISTS history (
         id SERIAL PRIMARY KEY,
         event_id INTEGER REFERENCES events(id),
-        date TIMESTAMP NOT NULL,
-        action TEXT NOT NULL,
-        details TEXT
+        revisions JSONB
       )
     `);
     console.log('History 表格已創建或已存在');
@@ -110,9 +108,9 @@ app.get('/api/events', async (req, res) => {
       start: event.start.toISOString().split('T')[0],
       end: event.end_date ? event.end_date.toISOString().split('T')[0] : null,
       title: { zh: event.title_zh, en: event.title_en || '' },
-      description: { zh: event.description_zh || '', en: event.description_en || '' }, // 更新為 description_zh 和 description_en
+      description: { zh: event.description_zh || '', en: event.description_en || '' },
       type: event.type,
-      grade: event.grade ? event.grade.split(',') : [], // 將字串轉為陣列
+      grade: event.grade ? event.grade.split(',') : [],
       link: event.link || ''
     }));
     res.json(events);
@@ -128,11 +126,7 @@ app.get('/api/history', async (req, res) => {
     const result = await pool.query('SELECT * FROM history');
     const history = result.rows.map(record => ({
       eventId: record.event_id,
-      revisions: [{
-        date: record.date.toISOString(),
-        action: record.action,
-        details: record.details
-      }]
+      revisions: record.revisions || [] // 確保 revisions 為陣列
     }));
     res.json(history);
   } catch (err) {
@@ -205,13 +199,13 @@ app.get('/admin', (req, res) => {
 
 // 新增事件
 app.post('/admin/add', async (req, res) => {
-  const { start, end, title_zh, title_en, description_zh, description_en, type, grade, link } = req.body; // 更新為 description_zh 和 description_en
+  const { start, end, title_zh, title_en, description_zh, description_en, type, grade, link } = req.body;
   if (!start || !title_zh) {
     return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
   }
 
   const gradeArray = Array.isArray(grade) ? grade : (grade ? [grade] : ['all-grades']);
-  const gradeString = gradeArray.join(','); // 將陣列轉為逗號分隔的字串
+  const gradeString = gradeArray.join(',');
 
   if (end && end < start) {
     return res.status(400).send('結束日期不能早於開始日期。<br><a href="/admin">返回</a>');
@@ -219,20 +213,35 @@ app.post('/admin/add', async (req, res) => {
 
   try {
     const eventResult = await pool.query(
-      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', // 更新為 description_zh 和 description_en
+      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
       [start, end || start, title_zh.trim(), title_en || '', description_zh || '', description_en || '', type, gradeString, link || '']
     );
     const eventId = eventResult.rows[0].id;
 
+    // 獲取現有的 revisions（如果有的話）
+    const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [eventId]);
+    let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
+
+    // 添加新的修訂記錄
     const revision = {
       date: new Date().toISOString(),
       action: '新增事件',
       details: `新增: ${title_zh}`
     };
-    await pool.query(
-      'INSERT INTO history (event_id, date, action, details) VALUES ($1, $2, $3, $4)',
-      [eventId, revision.date, revision.action, revision.details]
-    );
+    revisions.push(revision);
+
+    // 更新 history 表
+    if (historyResult.rows.length > 0) {
+      await pool.query(
+        'UPDATE history SET revisions = $1 WHERE event_id = $2',
+        [revisions, eventId]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO history (event_id, revisions) VALUES ($1, $2)',
+        [eventId, revisions]
+      );
+    }
 
     res.status(201).send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回</a>');
   } catch (err) {
