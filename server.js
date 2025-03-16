@@ -169,12 +169,6 @@ app.get('/admin', (req, res) => {
         <label for="title_en">標題（英文）:</label>
         <input type="text" id="title_en" name="title_en">
 
-        <label for="desc_zh">描述（中文）:</label>
-        <textarea id="desc_zh" name="desc_zh"></textarea>
-
-        <label for="desc_en">描述（英文）:</label>
-        <textarea id="desc_en" name="desc_en"></textarea>
-
         <label for="type">事件類型:</label>
         <select id="type" name="type">
           <option value="important-exam">重要考試</option>
@@ -216,7 +210,7 @@ app.post('/admin/add', async (req, res) => {
   try {
     // 插入事件到 events 表
     const eventResult = await pool.query(
-      'INSERT INTO events (start, end_date, title_zh, title_en, desc_zh, desc_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', // 更新為 end_date
+      'INSERT INTO events (start, end_date, title_zh, title_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', // 更新為 end_date
       [start, end || start, title_zh.trim(), title_en || '', desc_zh || '', desc_en || '', type, gradeArray, link || '']
     );
     const eventId = eventResult.rows[0].id;
