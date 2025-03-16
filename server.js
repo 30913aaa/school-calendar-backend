@@ -70,15 +70,6 @@ async function initializeDatabase() {
     `);
     console.log('Events 表格已創建或已存在');
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS history (
-        id SERIAL PRIMARY KEY,
-        event_id INTEGER REFERENCES events(id),
-        revisions JSONB
-      )
-    `);
-    console.log('History 表格已創建或已存在');
-
     client.release();
   } catch (err) {
     console.error('初始化資料庫時發生錯誤:', err.stack);
@@ -115,21 +106,6 @@ app.get('/api/events', async (req, res) => {
   } catch (err) {
     console.error('無法獲取事件:', err.stack);
     res.status(500).send('伺服器錯誤: 無法獲取事件資料');
-  }
-});
-
-// 獲取歷史記錄
-app.get('/api/history', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM history');
-    const history = result.rows.map(record => ({
-      eventId: record.event_id,
-      revisions: record.revisions || []
-    }));
-    res.json(history);
-  } catch (err) {
-    console.error('無法獲取歷史記錄:', err.stack);
-    res.status(500).send('伺服器錯誤: 無法獲取歷史記錄');
   }
 });
 
@@ -335,28 +311,10 @@ app.post('/admin/add', async (req, res) => {
   }
 
   try {
-    const eventResult = await pool.query(
-      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+    await pool.query(
+      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
       [start, end || start, title_zh.trim(), title_en || '', description_zh || '', description_en || '', type, gradeString, link || '']
     );
-    const eventId = eventResult.rows[0].id;
-
-    const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [eventId]);
-    let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
-    const revision = {
-      date: new Date().toISOString(),
-      action: '新增事件',
-      details: `新增: ${title_zh}`
-    };
-    revisions.push(revision);
-    const revisionsJson = JSON.stringify(revisions);
-
-    if (historyResult.rows.length > 0) {
-      await pool.query('UPDATE history SET revisions = $1 WHERE event_id = $2', [revisionsJson, eventId]);
-    } else {
-      await pool.query('INSERT INTO history (event_id, revisions) VALUES ($1, $2)', [eventId, revisionsJson]);
-    }
-
     res.status(201).send('事件新增成功！<br><a href="/admin">返回管理平台</a>');
   } catch (err) {
     console.error('新增事件失敗:', err.stack);
@@ -372,25 +330,6 @@ app.post('/admin/delete', async (req, res) => {
   }
 
   try {
-    // 記錄刪除操作到 history
-    const eventResult = await pool.query('SELECT title_zh FROM events WHERE id = $1', [id]);
-    const title_zh = eventResult.rows[0]?.title_zh || '未知事件';
-    const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [id]);
-    let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
-    revisions.push({
-      date: new Date().toISOString(),
-      action: '刪除事件',
-      details: `刪除: ${title_zh}`
-    });
-    const revisionsJson = JSON.stringify(revisions);
-
-    if (historyResult.rows.length > 0) {
-      await pool.query('UPDATE history SET revisions = $1 WHERE event_id = $2', [revisionsJson, id]);
-    } else {
-      await pool.query('INSERT INTO history (event_id, revisions) VALUES ($1, $2)', [id, revisionsJson]);
-    }
-
-    // 刪除事件
     await pool.query('DELETE FROM events WHERE id = $1', [id]);
     res.status(200).send('事件刪除成功！<br><a href="/admin">返回管理平台</a>');
   } catch (err) {
@@ -423,22 +362,6 @@ app.post('/admin/update', async (req, res) => {
       return res.status(404).send('事件未找到。<br><a href="/admin">返回管理平台</a>');
     }
 
-    // 記錄修改操作到 history
-    const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [id]);
-    let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
-    revisions.push({
-      date: new Date().toISOString(),
-      action: '修改事件',
-      details: `修改: ${title_zh}`
-    });
-    const revisionsJson = JSON.stringify(revisions);
-
-    if (historyResult.rows.length > 0) {
-      await pool.query('UPDATE history SET revisions = $1 WHERE event_id = $2', [revisionsJson, id]);
-    } else {
-      await pool.query('INSERT INTO history (event_id, revisions) VALUES ($1, $2)', [id, revisionsJson]);
-    }
-
     res.status(200).send('事件修改成功！<br><a href="/admin">返回管理平台</a>');
   } catch (err) {
     console.error('修改事件失敗:', err.stack);
@@ -449,7 +372,6 @@ app.post('/admin/update', async (req, res) => {
 // 清空資料端點
 app.post('/admin/clear', async (req, res) => {
   try {
-    await pool.query('DELETE FROM history');
     await pool.query('DELETE FROM events');
     await pool.query('ALTER SEQUENCE events_id_seq RESTART WITH 1');
     res.status(200).send('所有事件資料已清空！<br><a href="/admin">返回管理平台</a>');
