@@ -53,7 +53,6 @@ async function initializeDatabase() {
   try {
     const client = await pool.connect();
 
-    // 檢查並創建 events 表
     await client.query(`
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
@@ -71,7 +70,6 @@ async function initializeDatabase() {
     `);
     console.log('Events 表格已創建或已存在');
 
-    // 檢查並創建 history 表
     await client.query(`
       CREATE TABLE IF NOT EXISTS history (
         id SERIAL PRIMARY KEY,
@@ -126,7 +124,7 @@ app.get('/api/history', async (req, res) => {
     const result = await pool.query('SELECT * FROM history');
     const history = result.rows.map(record => ({
       eventId: record.event_id,
-      revisions: record.revisions || [] // 確保 revisions 為陣列
+      revisions: record.revisions || []
     }));
     res.json(history);
   } catch (err) {
@@ -136,79 +134,204 @@ app.get('/api/history', async (req, res) => {
 });
 
 // 管理平台頁面
-app.get('/admin', (req, res) => {
-  res.send(`<!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>後端管理平台 - 新增事件</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        form { max-width: 600px; margin: auto; }
-        label { display: block; margin-top: 10px; }
-        input, textarea, select { width: 100%; padding: 8px; margin-top: 5px; }
-        button { margin-top: 15px; padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-      </style>
-    </head>
-    <body>
-      <h1>後端管理平台 - 新增事件</h1>
-      <form action="/admin/add" method="POST">
-        <label for="start">開始日期 (YYYY-MM-DD):</label>
-        <input type="date" id="start" name="start" required>
+app.get('/admin', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM events');
+    const events = result.rows.map(event => ({
+      id: event.id,
+      start: event.start.toISOString().split('T')[0],
+      end: event.end_date ? event.end_date.toISOString().split('T')[0] : null,
+      title_zh: event.title_zh,
+      title_en: event.title_en || '',
+      description_zh: event.description_zh || '',
+      description_en: event.description_en || '',
+      type: event.type,
+      grade: event.grade,
+      link: event.link || ''
+    })).sort((a, b) => a.start.localeCompare(b.start));
 
-        <label for="end">結束日期 (YYYY-MM-DD，可選):</label>
-        <input type="date" id="end" name="end">
+    res.send(`<!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>後端管理平台 - 事件管理</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .container { max-width: 1200px; margin: auto; }
+          .event-list { margin-top: 20px; }
+          .event-item { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+          .event-item h3 { margin: 0 0 10px; }
+          .event-item p { margin: 5px 0; }
+          .actions { margin-top: 10px; }
+          .actions button { padding: 5px 10px; margin-right: 10px; cursor: pointer; }
+          .delete-btn { background-color: #dc3545; color: white; border: none; }
+          .edit-btn { background-color: #007bff; color: white; border: none; }
+          .delete-btn:hover { background-color: #c82333; }
+          .edit-btn:hover { background-color: #0056b3; }
+          .form-container { display: none; margin-top: 20px; }
+          .form-container.active { display: block; }
+          label { display: block; margin-top: 10px; }
+          input, textarea, select { width: 100%; padding: 8px; margin-top: 5px; }
+          button[type="submit"] { margin-top: 15px; padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+          button[type="submit"]:hover { background-color: #0056b3; }
+          .cancel-btn { background-color: #6c757d; color: white; margin-left: 10px; }
+          .cancel-btn:hover { background-color: #5a6268; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>後端管理平台 - 事件管理</h1>
+          <form action="/admin/add" method="POST" id="addForm">
+            <h2>新增事件</h2>
+            <label for="start">開始日期 (YYYY-MM-DD):</label>
+            <input type="date" id="start" name="start" required>
 
-        <label for="title_zh">標題（中文）:</label>
-        <input type="text" id="title_zh" name="title_zh" required>
+            <label for="end">結束日期 (YYYY-MM-DD，可選):</label>
+            <input type="date" id="end" name="end">
 
-        <label for="title_en">標題（英文）:</label>
-        <input type="text" id="title_en" name="title_en">
+            <label for="title_zh">標題（中文）:</label>
+            <input type="text" id="title_zh" name="title_zh" required>
 
-        <label for="description_zh">描述（中文）:</label>
-        <textarea id="description_zh" name="description_zh"></textarea>
+            <label for="title_en">標題（英文）:</label>
+            <input type="text" id="title_en" name="title_en">
 
-        <label for="description_en">描述（英文）:</label>
-        <textarea id="description_en" name="description_en"></textarea>
+            <label for="description_zh">描述（中文）:</label>
+            <textarea id="description_zh" name="description_zh"></textarea>
 
-        <label for="type">事件類型:</label>
-        <select id="type" name="type">
-          <option value="important-exam">重要考試</option>
-          <option value="school-activity">學校活動</option>
-          <option value="announcement">公告</option>
-          <option value="holiday">假期</option>
-        </select>
+            <label for="description_en">描述（英文）:</label>
+            <textarea id="description_en" name="description_en"></textarea>
 
-        <label for="grade">年級標籤:</label>
-        <select id="grade" name="grade" multiple>
-          <option value="grade-1">高一</option>
-          <option value="grade-2">高二</option>
-          <option value="grade-3">高三</option>
-          <option value="all-grades">全年級</option>
-        </select>
+            <label for="type">事件類型:</label>
+            <select id="type" name="type">
+              <option value="important-exam">重要考試</option>
+              <option value="school-activity">學校活動</option>
+              <option value="announcement">公告</option>
+              <option value="holiday">假期</option>
+            </select>
 
-        <label for="link">超連結 (可選):</label>
-        <input type="url" id="link" name="link" placeholder="https://example.com">
+            <label for="grade">年級標籤:</label>
+            <select id="grade" name="grade" multiple>
+              <option value="grade-1">高一</option>
+              <option value="grade-2">高二</option>
+              <option value="grade-3">高三</option>
+              <option value="all-grades">全年級</option>
+            </select>
 
-        <button type="submit">新增事件</button>
-      </form>
-    </body>
-    </html>`);
+            <label for="link">超連結 (可選):</label>
+            <input type="url" id="link" name="link" placeholder="https://example.com">
+
+            <button type="submit">新增事件</button>
+          </form>
+
+          <div class="event-list">
+            <h2>現有事件</h2>
+            ${events.map(event => `
+              <div class="event-item">
+                <h3>${event.title_zh} (${event.title_en || '無'})</h3>
+                <p><strong>開始日期:</strong> ${event.start}</p>
+                <p><strong>結束日期:</strong> ${event.end_date || '無'}</p>
+                <p><strong>類型:</strong> ${event.type}</p>
+                <p><strong>年級:</strong> ${event.grade}</p>
+                <p><strong>描述 (中文):</strong> ${event.description_zh}</p>
+                <p><strong>描述 (英文):</strong> ${event.description_en}</p>
+                <p><strong>連結:</strong> <a href="${event.link}" target="_blank">${event.link || '無'}</a></p>
+                <div class="actions">
+                  <form action="/admin/delete" method="POST" style="display:inline;" onsubmit="return confirm('確定要刪除此事件嗎？');">
+                    <input type="hidden" name="id" value="${event.id}">
+                    <button type="submit" class="delete-btn">刪除</button>
+                  </form>
+                  <button class="edit-btn" onclick="showEditForm(${event.id}, '${event.start}', '${event.end_date || ''}', '${event.title_zh}', '${event.title_en}', '${event.description_zh}', '${event.description_en}', '${event.type}', '${event.grade}', '${event.link || ''}')">修改</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="form-container" id="editFormContainer">
+            <h2>修改事件</h2>
+            <form action="/admin/update" method="POST" id="editForm">
+              <input type="hidden" id="editId" name="id">
+              <label for="editStart">開始日期 (YYYY-MM-DD):</label>
+              <input type="date" id="editStart" name="start" required>
+
+              <label for="editEnd">結束日期 (YYYY-MM-DD，可選):</label>
+              <input type="date" id="editEnd" name="end">
+
+              <label for="editTitle_zh">標題（中文）:</label>
+              <input type="text" id="editTitle_zh" name="title_zh" required>
+
+              <label for="editTitle_en">標題（英文）:</label>
+              <input type="text" id="editTitle_en" name="title_en">
+
+              <label for="editDescription_zh">描述（中文）:</label>
+              <textarea id="editDescription_zh" name="description_zh"></textarea>
+
+              <label for="editDescription_en">描述（英文）:</label>
+              <textarea id="editDescription_en" name="description_en"></textarea>
+
+              <label for="editType">事件類型:</label>
+              <select id="editType" name="type">
+                <option value="important-exam">重要考試</option>
+                <option value="school-activity">學校活動</option>
+                <option value="announcement">公告</option>
+                <option value="holiday">假期</option>
+              </select>
+
+              <label for="editGrade">年級標籤:</label>
+              <select id="editGrade" name="grade" multiple>
+                <option value="grade-1">高一</option>
+                <option value="grade-2">高二</option>
+                <option value="grade-3">高三</option>
+                <option value="all-grades">全年級</option>
+              </select>
+
+              <label for="editLink">超連結 (可選):</label>
+              <input type="url" id="editLink" name="link" placeholder="https://example.com">
+
+              <button type="submit">儲存修改</button>
+              <button type="button" class="cancel-btn" onclick="hideEditForm()">取消</button>
+            </form>
+          </div>
+
+          <script>
+            function showEditForm(id, start, end, title_zh, title_en, description_zh, description_en, type, grade, link) {
+              document.getElementById('editId').value = id;
+              document.getElementById('editStart').value = start;
+              document.getElementById('editEnd').value = end;
+              document.getElementById('editTitle_zh').value = title_zh;
+              document.getElementById('editTitle_en').value = title_en;
+              document.getElementById('editDescription_zh').value = description_zh;
+              document.getElementById('editDescription_en').value = description_en;
+              document.getElementById('editType').value = type;
+              document.getElementById('editGrade').value = grade.split(',').filter(g => g);
+              document.getElementById('editLink').value = link;
+              document.getElementById('editFormContainer').classList.add('active');
+            }
+
+            function hideEditForm() {
+              document.getElementById('editFormContainer').classList.remove('active');
+            }
+          </script>
+        </div>
+      </body>
+      </html>`);
+  } catch (err) {
+    console.error('獲取事件失敗:', err.stack);
+    res.status(500).send('伺服器錯誤: 無法加載事件資料');
+  }
 });
 
 // 新增事件
 app.post('/admin/add', async (req, res) => {
   const { start, end, title_zh, title_en, description_zh, description_en, type, grade, link } = req.body;
   if (!start || !title_zh) {
-    return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
+    return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回管理平台</a>');
   }
 
   const gradeArray = Array.isArray(grade) ? grade : (grade ? [grade] : ['all-grades']);
   const gradeString = gradeArray.join(',');
 
   if (end && end < start) {
-    return res.status(400).send('結束日期不能早於開始日期。<br><a href="/admin">返回</a>');
+    return res.status(400).send('結束日期不能早於開始日期。<br><a href="/admin">返回管理平台</a>');
   }
 
   try {
@@ -218,38 +341,121 @@ app.post('/admin/add', async (req, res) => {
     );
     const eventId = eventResult.rows[0].id;
 
-    // 獲取現有的 revisions
     const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [eventId]);
     let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
-
-    // 添加新的修訂記錄
     const revision = {
       date: new Date().toISOString(),
       action: '新增事件',
       details: `新增: ${title_zh}`
     };
     revisions.push(revision);
-
-    // 將 revisions 序列化為 JSON 字串
     const revisionsJson = JSON.stringify(revisions);
 
-    // 更新或插入 history 表
     if (historyResult.rows.length > 0) {
-      await pool.query(
-        'UPDATE history SET revisions = $1 WHERE event_id = $2',
-        [revisionsJson, eventId]
-      );
+      await pool.query('UPDATE history SET revisions = $1 WHERE event_id = $2', [revisionsJson, eventId]);
     } else {
-      await pool.query(
-        'INSERT INTO history (event_id, revisions) VALUES ($1, $2)',
-        [eventId, revisionsJson]
-      );
+      await pool.query('INSERT INTO history (event_id, revisions) VALUES ($1, $2)', [eventId, revisionsJson]);
     }
 
-    res.status(201).send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回</a>');
+    res.status(201).send('事件新增成功！<br><a href="/admin">返回管理平台</a>');
   } catch (err) {
     console.error('新增事件失敗:', err.stack);
     res.status(500).send('伺服器錯誤: 無法新增事件');
+  }
+});
+
+// 刪除事件
+app.post('/admin/delete', async (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).send('請提供事件 ID。<br><a href="/admin">返回管理平台</a>');
+  }
+
+  try {
+    // 記錄刪除操作到 history
+    const eventResult = await pool.query('SELECT title_zh FROM events WHERE id = $1', [id]);
+    const title_zh = eventResult.rows[0]?.title_zh || '未知事件';
+    const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [id]);
+    let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
+    revisions.push({
+      date: new Date().toISOString(),
+      action: '刪除事件',
+      details: `刪除: ${title_zh}`
+    });
+    const revisionsJson = JSON.stringify(revisions);
+
+    if (historyResult.rows.length > 0) {
+      await pool.query('UPDATE history SET revisions = $1 WHERE event_id = $2', [revisionsJson, id]);
+    } else {
+      await pool.query('INSERT INTO history (event_id, revisions) VALUES ($1, $2)', [id, revisionsJson]);
+    }
+
+    // 刪除事件
+    await pool.query('DELETE FROM events WHERE id = $1', [id]);
+    res.status(200).send('事件刪除成功！<br><a href="/admin">返回管理平台</a>');
+  } catch (err) {
+    console.error('刪除事件失敗:', err.stack);
+    res.status(500).send('伺服器錯誤: 無法刪除事件');
+  }
+});
+
+// 修改事件
+app.post('/admin/update', async (req, res) => {
+  const { id, start, end, title_zh, title_en, description_zh, description_en, type, grade, link } = req.body;
+  if (!id || !start || !title_zh) {
+    return res.status(400).send('請提供必要的 ID、開始日期與中文標題。<br><a href="/admin">返回管理平台</a>');
+  }
+
+  const gradeArray = Array.isArray(grade) ? grade : (grade ? [grade] : ['all-grades']);
+  const gradeString = gradeArray.join(',');
+
+  if (end && end < start) {
+    return res.status(400).send('結束日期不能早於開始日期。<br><a href="/admin">返回管理平台</a>');
+  }
+
+  try {
+    const eventResult = await pool.query(
+      'UPDATE events SET start = $1, end_date = $2, title_zh = $3, title_en = $4, description_zh = $5, description_en = $6, type = $7, grade = $8, link = $9 WHERE id = $10',
+      [start, end || null, title_zh.trim(), title_en || '', description_zh || '', description_en || '', type, gradeString, link || '', id]
+    );
+
+    if (eventResult.rowCount === 0) {
+      return res.status(404).send('事件未找到。<br><a href="/admin">返回管理平台</a>');
+    }
+
+    // 記錄修改操作到 history
+    const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [id]);
+    let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
+    revisions.push({
+      date: new Date().toISOString(),
+      action: '修改事件',
+      details: `修改: ${title_zh}`
+    });
+    const revisionsJson = JSON.stringify(revisions);
+
+    if (historyResult.rows.length > 0) {
+      await pool.query('UPDATE history SET revisions = $1 WHERE event_id = $2', [revisionsJson, id]);
+    } else {
+      await pool.query('INSERT INTO history (event_id, revisions) VALUES ($1, $2)', [id, revisionsJson]);
+    }
+
+    res.status(200).send('事件修改成功！<br><a href="/admin">返回管理平台</a>');
+  } catch (err) {
+    console.error('修改事件失敗:', err.stack);
+    res.status(500).send('伺服器錯誤: 無法修改事件');
+  }
+});
+
+// 清空資料端點
+app.post('/admin/clear', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM history');
+    await pool.query('DELETE FROM events');
+    await pool.query('ALTER SEQUENCE events_id_seq RESTART WITH 1');
+    res.status(200).send('所有事件資料已清空！<br><a href="/admin">返回管理平台</a>');
+  } catch (err) {
+    console.error('清空資料失敗:', err.stack);
+    res.status(500).send('伺服器錯誤: 無法清空資料');
   }
 });
 
