@@ -108,25 +108,7 @@ app.get('/api/events', async (req, res) => {
     res.status(500).send('伺服器錯誤: 無法獲取事件資料');
   }
 });
-app.post('/admin/delete-multiple', async (req, res) => {
-  const { ids } = req.body;
-  if (!ids || !Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).send('請提供有效的 ID 列表。<br><a href="/admin">返回管理平台</a>');
-  }
 
-  try {
-    await pool.query('BEGIN');
-    for (const id of ids) {
-      await pool.query('DELETE FROM events WHERE id = $1', [id]);
-    }
-    await pool.query('COMMIT');
-    res.status(200).send('選定事件刪除成功！<br><a href="/admin">返回管理平台</a>');
-  } catch (err) {
-    await pool.query('ROLLBACK');
-    console.error('批量刪除事件失敗:', err.stack);
-    res.status(500).send('伺服器錯誤: 無法批量刪除事件');
-  }
-});
 // 管理平台頁面
 app.get('/admin', async (req, res) => {
   try {
@@ -216,18 +198,7 @@ app.get('/admin', async (req, res) => {
 
             <button type="submit">新增事件</button>
           </form>
-          <main class="flex">
-  <section id="calendar" class="flex-grow">
-    <div class="calendar-grid"></div>
-  </section>
-  <aside id="admin-event-list" class="visible">
-    <form action="/admin/add" method="POST">
-      <!-- 新增事件表單 -->
-    </form>
-    <ul></ul>
-    <button id="delete-selected">Delete Selected</button>
-  </aside>
-</main>
+
           <div class="event-list">
             <h2>現有事件</h2>
             ${events.map(event => `
