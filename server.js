@@ -33,7 +33,7 @@ pool.query(`
     description_zh TEXT,
     description_en TEXT,
     type VARCHAR(50) NOT NULL,
-    grade TEXT[] NOT NULL, -- 確保為 TEXT[] 類型
+    grade TEXT[] NOT NULL,
     link VARCHAR(255),
     revision_history JSONB
   );
@@ -126,7 +126,7 @@ app.post('/admin/add', async (req, res) => {
     return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
   }
 
-  // 驗證日期格式
+  // 驗證日期格式並轉換為 YYYY-MM-DD
   const startDate = new Date(start).toISOString().split('T')[0];
   const endDate = end ? new Date(end).toISOString().split('T')[0] : startDate;
   if (isNaN(new Date(start)) || (end && isNaN(new Date(end)))) {
@@ -138,7 +138,8 @@ app.post('/admin/add', async (req, res) => {
     return res.status(400).send('無效的事件類型。<br><a href="/admin">返回</a>');
   }
 
-  const gradeArray = Array.isArray(grade) ? grade : [grade || 'all-grades']; // 確保為陣列
+  // 確保 grade 是一個陣列
+  const gradeArray = Array.isArray(grade) ? grade : [grade || 'all-grades'];
   const revision = {
     date: new Date().toISOString(),
     action: '新增事件',
