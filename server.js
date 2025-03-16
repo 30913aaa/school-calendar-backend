@@ -33,7 +33,7 @@ pool.query(`
     description_zh TEXT,
     description_en TEXT,
     type VARCHAR(50) NOT NULL,
-    grade VARCHAR(255) NOT NULL,
+    grade TEXT[] NOT NULL, -- 改為 TEXT[] 支援陣列
     link VARCHAR(255),
     revision_history JSONB
   );
@@ -122,11 +122,13 @@ app.get('/admin', (req, res) => {
 
 app.post('/admin/add', async (req, res) => {
   const { start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link } = req.body;
-
-  // 輸入驗證
   if (!start || !title_zh) {
     return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
   }
+
+  // 驗證日期格式
+  const startDate = new Date(start).toISOString().split('T')[0];
+  const endDate = end ? new Date(end).toISOString().split('T')[0] : startDate;
   if (isNaN(new Date(start)) || (end && isNaN(new Date(end)))) {
     return res.status(400).send('日期格式無效。<br><a href="/admin">返回</a>');
   }
@@ -136,20 +138,21 @@ app.post('/admin/add', async (req, res) => {
     return res.status(400).send('無效的事件類型。<br><a href="/admin">返回</a>');
   }
 
-  const gradeArray = Array.isArray(grade) ? grade : (grade ? [grade] : ['all-grades']);
+  const gradeArray = Array.isArray(grade) ? grade : [grade || 'all-grades']; // 確保為陣列
   const revision = {
     date: new Date().toISOString(),
     action: '新增事件',
     details: `新增: ${title_zh}`
   };
+  const revisionHistoryJson = JSON.stringify([revision]);
 
   try {
     await pool.query('BEGIN'); // 開始交易
 
     // 插入事件到 events 表
     const eventResult = await pool.query(
-      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
-      [start, end || start, title_zh.trim(), title_en || "", desc_zh || "", desc_en || "", type, gradeArray.join(','), link || ""]
+      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link, revision_history) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
+      [startDate, endDate, title_zh.trim(), title_en || "", desc_zh || "", desc_en || "", type, gradeArray, link || "", revisionHistoryJson]
     );
     const eventId = eventResult.rows[0].id;
 
