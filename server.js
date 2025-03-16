@@ -71,7 +71,7 @@ async function initializeDatabase() {
     `);
     console.log('Events 表格已創建或已存在');
 
-    // 檢查並創建 history 表（與現有結構一致）
+    // 檢查並創建 history 表
     await client.query(`
       CREATE TABLE IF NOT EXISTS history (
         id SERIAL PRIMARY KEY,
@@ -218,7 +218,7 @@ app.post('/admin/add', async (req, res) => {
     );
     const eventId = eventResult.rows[0].id;
 
-    // 獲取現有的 revisions（如果有的話）
+    // 獲取現有的 revisions
     const historyResult = await pool.query('SELECT revisions FROM history WHERE event_id = $1', [eventId]);
     let revisions = historyResult.rows.length > 0 ? historyResult.rows[0].revisions || [] : [];
 
@@ -230,16 +230,19 @@ app.post('/admin/add', async (req, res) => {
     };
     revisions.push(revision);
 
-    // 更新 history 表
+    // 將 revisions 序列化為 JSON 字串
+    const revisionsJson = JSON.stringify(revisions);
+
+    // 更新或插入 history 表
     if (historyResult.rows.length > 0) {
       await pool.query(
         'UPDATE history SET revisions = $1 WHERE event_id = $2',
-        [revisions, eventId]
+        [revisionsJson, eventId]
       );
     } else {
       await pool.query(
         'INSERT INTO history (event_id, revisions) VALUES ($1, $2)',
-        [eventId, revisions]
+        [eventId, revisionsJson]
       );
     }
 
