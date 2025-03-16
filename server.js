@@ -122,24 +122,20 @@ app.get('/admin', (req, res) => {
 
 app.post('/admin/add', async (req, res) => {
   const { start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link } = req.body;
+
+  // 驗證必要欄位
   if (!start || !title_zh) {
-    return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
+    return res.status(400).send('請提供開始日期與中文標題。');
   }
 
-  // 驗證日期格式並轉換為 YYYY-MM-DD
+  // 轉換日期格式為 YYYY-MM-DD
   const startDate = new Date(start).toISOString().split('T')[0];
   const endDate = end ? new Date(end).toISOString().split('T')[0] : startDate;
-  if (isNaN(new Date(start)) || (end && isNaN(new Date(end)))) {
-    return res.status(400).send('日期格式無效。<br><a href="/admin">返回</a>');
-  }
 
-  const validTypes = ['important-exam', 'school-activity', 'announcement', 'holiday'];
-  if (!validTypes.includes(type)) {
-    return res.status(400).send('無效的事件類型。<br><a href="/admin">返回</a>');
-  }
-
-  // 確保 grade 是一個陣列
+  // 確保 grade 是陣列
   const gradeArray = Array.isArray(grade) ? grade : [grade || 'all-grades'];
+
+  // 準備修訂歷史
   const revision = {
     date: new Date().toISOString(),
     action: '新增事件',
@@ -150,26 +146,26 @@ app.post('/admin/add', async (req, res) => {
   try {
     await pool.query('BEGIN'); // 開始交易
 
-    // 插入事件到 events 表
+    // 插入事件
     const eventResult = await pool.query(
       'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link, revision_history) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
       [startDate, endDate, title_zh.trim(), title_en || "", desc_zh || "", desc_en || "", type, gradeArray, link || "", revisionHistoryJson]
     );
+
     const eventId = eventResult.rows[0].id;
 
-    // 插入修訂歷史到 history 表
-    const revisionsJson = JSON.stringify([revision]);
+    // 插入歷史記錄
     await pool.query(
       'INSERT INTO history (event_id, revisions) VALUES ($1, $2)',
-      [eventId, revisionsJson]
+      [eventId, revisionHistoryJson]
     );
 
     await pool.query('COMMIT'); // 提交交易
-    res.send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回管理平台</a>');
+    res.send('事件新增成功！');
   } catch (err) {
     await pool.query('ROLLBACK'); // 回滾交易
     console.error('新增事件失敗:', err.stack);
-    res.status(500).send('伺服器錯誤，請稍後再試。');
+    res.status(500).send('伺服器錯誤');
   }
 });
 
