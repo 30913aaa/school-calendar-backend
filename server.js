@@ -1,7 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const { Pool } = require('pg'); // 只聲明一次
+const { Pool } = require('pg');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -56,7 +56,7 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
         start DATE NOT NULL,
-        end DATE,
+        end_date DATE,  
         title_zh TEXT NOT NULL,
         title_en TEXT,
         desc_zh TEXT,
@@ -104,7 +104,7 @@ app.get('/api/events', async (req, res) => {
     const events = result.rows.map(event => ({
       id: event.id,
       start: event.start.toISOString().split('T')[0], // 格式化日期
-      end: event.end ? event.end.toISOString().split('T')[0] : null, // 格式化日期
+      end: event.end_date ? event.end_date.toISOString().split('T')[0] : null, // 更新為 end_date
       title: { zh: event.title_zh, en: event.title_en || '' },
       description: { zh: event.desc_zh || '', en: event.desc_en || '' },
       type: event.type,
@@ -216,7 +216,7 @@ app.post('/admin/add', async (req, res) => {
   try {
     // 插入事件到 events 表
     const eventResult = await pool.query(
-      'INSERT INTO events (start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+      'INSERT INTO events (start, end_date, title_zh, title_en, desc_zh, desc_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', // 更新為 end_date
       [start, end || start, title_zh.trim(), title_en || '', desc_zh || '', desc_en || '', type, gradeArray, link || '']
     );
     const eventId = eventResult.rows[0].id;
