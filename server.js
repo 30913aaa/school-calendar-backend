@@ -1,13 +1,44 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const fs = require('fs');
-const path = require('path');
 const cors = require('cors');
+const { Pool } = require('pg');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const eventsFile = path.join(__dirname, 'events.json');
-const historyFile = path.join(__dirname, 'history.json');
+
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+  ssl: {
+    rejectUnauthorized: false // Render 的 PostgreSQL 所需
+  }
+});
+
+// 記錄使用的配置
+console.log('嘗試以以下配置連線:', {
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT
+});
+
+// 啟動時測試資料庫連線
+(async () => {
+  try {
+    const client = await pool.connect();
+    console.log('成功連接到 PostgreSQL 資料庫');
+    const res = await client.query('SELECT NOW()');
+    console.log('資料庫的當前時間:', res.rows[0]);
+    client.release();
+  } catch (err) {
+    console.error('無法連接到 PostgreSQL 資料庫:', err.stack);
+  }
+})();
 
 app.use(cors({
   origin: '*',
@@ -19,24 +50,49 @@ app.use(cors({
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-if (!fs.existsSync(eventsFile)) {
-  fs.writeFileSync(eventsFile, JSON.stringify([]), 'utf-8');
-}
-if (!fs.existsSync(historyFile)) {
-  fs.writeFileSync(historyFile, JSON.stringify([]), 'utf-8');
-}
-
-let events = JSON.parse(fs.readFileSync(eventsFile, 'utf-8'));
-let history = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
-
-app.get('/api/events', (req, res) => {
-  res.json(events);
+// 獲取所有事件
+app.get('/api/events', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM events');
+    // 將資料格式化為前端期望的結構
+    const events = result.rows.map(event => ({
+      id: event.id,
+      start: event.start,
+      end: event.end,
+      title: { zh: event.title_zh, en: event.title_en || '' },
+      description: { zh: event.desc_zh || '', en: event.desc_en || '' },
+      type: event.type,
+      grade: event.grade,
+      link: event.link || ''
+    }));
+    res.json(events);
+  } catch (err) {
+    console.error('無法獲取事件:', err);
+    res.status(500).send('伺服器錯誤');
+  }
 });
 
-app.get('/api/history', (req, res) => {
-  res.json(history);
+// 獲取歷史記錄
+app.get('/api/history', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM history');
+    // 將資料格式化為前端期望的結構
+    const history = result.rows.map(record => ({
+      eventId: record.event_id,
+      revisions: [{
+        date: record.date,
+        action: record.action,
+        details: record.details
+      }]
+    }));
+    res.json(history);
+  } catch (err) {
+    console.error('無法獲取歷史記錄:', err);
+    res.status(500).send('伺服器錯誤');
+  }
 });
 
+// 管理平台頁面
 app.get('/admin', (req, res) => {
   res.send(`<!DOCTYPE html>
     <html>
@@ -98,64 +154,45 @@ app.get('/admin', (req, res) => {
     </html>`);
 });
 
-app.post('/admin/add', (req, res) => {
+// 新增事件
+app.post('/admin/add', async (req, res) => {
   const { start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link } = req.body;
   if (!start || !title_zh) {
     return res.send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
   }
 
-  // 確保 grade 是一個陣列
   const gradeArray = Array.isArray(grade) ? grade : (grade ? [grade] : ['all-grades']);
 
-  const newEvent = {
-    id: events.length,
-    start,
-    end: end || start,
-    title: { zh: title_zh.trim(), en: title_en || "" },
-    description: { zh: desc_zh || "", en: desc_en || "" },
-    type,
-    grade: gradeArray,
-    link: link || "",
-    revisionHistory: []
-  };
-
-  if (newEvent.end < newEvent.start) {
+  if (end && end < start) {
     return res.send('結束日期不能早於開始日期。<br><a href="/admin">返回</a>');
   }
 
-  events.push(newEvent);
-  fs.writeFileSync(eventsFile, JSON.stringify(events, null, 2), 'utf-8');
+  try {
+    // 插入事件到 events 表
+    const eventResult = await pool.query(
+      'INSERT INTO events (start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+      [start, end || start, title_zh.trim(), title_en || '', desc_zh || '', desc_en || '', type, gradeArray, link || '']
+    );
+    const eventId = eventResult.rows[0].id;
 
-  const revision = {
-    date: new Date().toISOString(),
-    action: '新增事件',
-    details: `新增: ${title_zh}`
-  };
-  newEvent.revisionHistory.push(revision);
-  history.push({ eventId: newEvent.id, revisions: [revision] });
-  fs.writeFileSync(historyFile, JSON.stringify(history, null, 2), 'utf-8');
+    // 插入修訂歷史到 history 表
+    const revision = {
+      date: new Date().toISOString(),
+      action: '新增事件',
+      details: `新增: ${title_zh}`
+    };
+    await pool.query(
+      'INSERT INTO history (event_id, date, action, details) VALUES ($1, $2, $3, $4)',
+      [eventId, revision.date, revision.action, revision.details]
+    );
 
-  console.log('新增的事件：', newEvent);
-  res.send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回管理平台</a>');
-});
-const { Pool } = require('pg');
-
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
-});
-
-// 測試資料庫連接
-pool.connect((err, client, release) => {
-  if (err) {
-    return console.error('資料庫連接失敗:', err.stack);
+    res.send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回管理平台</a>');
+  } catch (err) {
+    console.error('新增事件失敗:', err);
+    res.status(500).send('伺服器錯誤');
   }
-  console.log('成功連接到 PostgreSQL 資料庫');
-  release();
 });
+
 app.listen(port, () => {
   console.log(`伺服器運行於 http://localhost:${port}`);
 });
