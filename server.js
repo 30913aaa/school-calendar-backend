@@ -33,7 +33,7 @@ pool.query(`
     description_zh TEXT,
     description_en TEXT,
     type VARCHAR(50) NOT NULL,
-    grade TEXT[] NOT NULL,
+    
     link VARCHAR(255),
     revision_history JSONB
   );
@@ -105,13 +105,8 @@ app.get('/admin', (req, res) => {
           <option value="announcement">公告</option>
           <option value="holiday">假期</option>
         </select>
-        <label for="grade">年級標籤:</label>
-        <select id="grade" name="grade" multiple>
-          <option value="grade-1">高一</option>
-          <option value="grade-2">高二</option>
-          <option value="grade-3">高三</option>
-          <option value="all-grades">全年級</option>
-        </select>
+        
+        
         <label for="link">超連結 (可選):</label>
         <input type="url" id="link" name="link" placeholder="https://example.com">
         <button type="submit">新增事件</button>
@@ -121,7 +116,7 @@ app.get('/admin', (req, res) => {
 });
 
 app.post('/admin/add', async (req, res) => {
-  const { start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link } = req.body;
+  const { start, end, title_zh, title_en, desc_zh, desc_en, type, link } = req.body;
 
   // 驗證必要欄位
   if (!start || !title_zh) {
@@ -132,8 +127,7 @@ app.post('/admin/add', async (req, res) => {
   const startDate = new Date(start).toISOString().split('T')[0];
   const endDate = end ? new Date(end).toISOString().split('T')[0] : startDate;
 
-  // 確保 grade 是陣列
-  const gradeArray = Array.isArray(grade) ? grade : [grade || 'all-grades'];
+
   
 
 
@@ -150,8 +144,8 @@ app.post('/admin/add', async (req, res) => {
 
     // 插入事件
     const eventResult = await pool.query(
-      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link, revision_history) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
-      [startDate, endDate, title_zh.trim(), title_en || "", desc_zh || "", desc_en || "", type, gradeArray, link || "", revisionHistoryJson]
+      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, link, revision_history) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+[startDate, endDate, title_zh.trim(), title_en || "", desc_zh || "", desc_en || "", type, link || "", revisionHistoryJson]
     );
     
     
