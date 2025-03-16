@@ -52,22 +52,26 @@ console.log('嘗試以以下配置連線:', {
 async function initializeDatabase() {
   try {
     const client = await pool.connect();
+
+    // 檢查並創建 events 表（與現有結構保持一致）
     await client.query(`
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
         start DATE NOT NULL,
-        end_date DATE,  
-        title_zh TEXT NOT NULL,
-        title_en TEXT,
-        desc_zh TEXT,
-        desc_en TEXT,
-        type TEXT NOT NULL,
-        grade TEXT[],
-        link TEXT
+        end_date DATE,
+        title_zh VARCHAR(255) NOT NULL,
+        title_en VARCHAR(255),
+        description_zh TEXT,
+        description_en TEXT,
+        type VARCHAR(50) NOT NULL,
+        grade VARCHAR(255) NOT NULL,
+        link VARCHAR(255),
+        revision_history JSONB
       )
     `);
     console.log('Events 表格已創建或已存在');
 
+    // 檢查並創建 history 表
     await client.query(`
       CREATE TABLE IF NOT EXISTS history (
         id SERIAL PRIMARY KEY,
@@ -78,6 +82,7 @@ async function initializeDatabase() {
       )
     `);
     console.log('History 表格已創建或已存在');
+
     client.release();
   } catch (err) {
     console.error('初始化資料庫時發生錯誤:', err.stack);
@@ -100,21 +105,20 @@ app.use(bodyParser.json());
 app.get('/api/events', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM events');
-    // 將資料格式化為前端期望的結構
     const events = result.rows.map(event => ({
       id: event.id,
-      start: event.start.toISOString().split('T')[0], // 格式化日期
-      end: event.end_date ? event.end_date.toISOString().split('T')[0] : null, // 更新為 end_date
+      start: event.start.toISOString().split('T')[0],
+      end: event.end_date ? event.end_date.toISOString().split('T')[0] : null,
       title: { zh: event.title_zh, en: event.title_en || '' },
-      description: { zh: event.desc_zh || '', en: event.desc_en || '' },
+      description: { zh: event.description_zh || '', en: event.description_en || '' }, // 更新為 description_zh 和 description_en
       type: event.type,
-      grade: event.grade,
+      grade: event.grade ? event.grade.split(',') : [], // 將字串轉為陣列
       link: event.link || ''
     }));
     res.json(events);
   } catch (err) {
     console.error('無法獲取事件:', err.stack);
-    res.status(500).send('伺服器錯誤');
+    res.status(500).send('伺服器錯誤: 無法獲取事件資料');
   }
 });
 
@@ -122,11 +126,10 @@ app.get('/api/events', async (req, res) => {
 app.get('/api/history', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM history');
-    // 將資料格式化為前端期望的結構
     const history = result.rows.map(record => ({
       eventId: record.event_id,
       revisions: [{
-        date: record.date.toISOString(), // 格式化日期
+        date: record.date.toISOString(),
         action: record.action,
         details: record.details
       }]
@@ -134,7 +137,7 @@ app.get('/api/history', async (req, res) => {
     res.json(history);
   } catch (err) {
     console.error('無法獲取歷史記錄:', err.stack);
-    res.status(500).send('伺服器錯誤');
+    res.status(500).send('伺服器錯誤: 無法獲取歷史記錄');
   }
 });
 
@@ -169,6 +172,12 @@ app.get('/admin', (req, res) => {
         <label for="title_en">標題（英文）:</label>
         <input type="text" id="title_en" name="title_en">
 
+        <label for="description_zh">描述（中文）:</label>
+        <textarea id="description_zh" name="description_zh"></textarea>
+
+        <label for="description_en">描述（英文）:</label>
+        <textarea id="description_en" name="description_en"></textarea>
+
         <label for="type">事件類型:</label>
         <select id="type" name="type">
           <option value="important-exam">重要考試</option>
@@ -196,26 +205,25 @@ app.get('/admin', (req, res) => {
 
 // 新增事件
 app.post('/admin/add', async (req, res) => {
-  const { start, end, title_zh, title_en, desc_zh, desc_en, type, grade, link } = req.body;
+  const { start, end, title_zh, title_en, description_zh, description_en, type, grade, link } = req.body; // 更新為 description_zh 和 description_en
   if (!start || !title_zh) {
     return res.status(400).send('請提供必要的開始日期與中文標題。<br><a href="/admin">返回</a>');
   }
 
   const gradeArray = Array.isArray(grade) ? grade : (grade ? [grade] : ['all-grades']);
+  const gradeString = gradeArray.join(','); // 將陣列轉為逗號分隔的字串
 
   if (end && end < start) {
     return res.status(400).send('結束日期不能早於開始日期。<br><a href="/admin">返回</a>');
   }
 
   try {
-    // 插入事件到 events 表
     const eventResult = await pool.query(
-      'INSERT INTO events (start, end_date, title_zh, title_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', // 更新為 end_date
-      [start, end || start, title_zh.trim(), title_en || '', desc_zh || '', desc_en || '', type, gradeArray, link || '']
+      'INSERT INTO events (start, end_date, title_zh, title_en, description_zh, description_en, type, grade, link) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', // 更新為 description_zh 和 description_en
+      [start, end || start, title_zh.trim(), title_en || '', description_zh || '', description_en || '', type, gradeString, link || '']
     );
     const eventId = eventResult.rows[0].id;
 
-    // 插入修訂歷史到 history 表
     const revision = {
       date: new Date().toISOString(),
       action: '新增事件',
@@ -226,10 +234,10 @@ app.post('/admin/add', async (req, res) => {
       [eventId, revision.date, revision.action, revision.details]
     );
 
-    res.status(201).send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回管理平台</a>');
+    res.status(201).send('事件新增成功！請重新整理頁面以查看更新。<br><a href="/admin">返回</a>');
   } catch (err) {
     console.error('新增事件失敗:', err.stack);
-    res.status(500).send('伺服器錯誤');
+    res.status(500).send('伺服器錯誤: 無法新增事件');
   }
 });
 
