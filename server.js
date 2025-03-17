@@ -5,7 +5,10 @@ const { Pool } = require('pg');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const path = require('path');
 
+// 服務當前目錄下的靜態檔案
+app.use(express.static(__dirname));
 // 檢查必要的環境變數
 const requiredEnvVars = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'DB_PORT'];
 requiredEnvVars.forEach(envVar => {
@@ -133,7 +136,8 @@ app.get('/admin', async (req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>後端管理平台 - 事件管理</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/admin.js"></script>
 </head>
 <body>
   <header>
