@@ -126,170 +126,243 @@ app.get('/admin', async (req, res) => {
       link: event.link || ''
     })).sort((a, b) => a.start.localeCompare(b.start));
 
-    res.send(`<!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>後端管理平台 - 事件管理</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .container { max-width: 1200px; margin: auto; }
-          .event-list { margin-top: 20px; }
-          .event-item { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
-          .event-item h3 { margin: 0 0 10px; }
-          .event-item p { margin: 5px 0; }
-          .actions { margin-top: 10px; }
-          .actions button { padding: 5px 10px; margin-right: 10px; cursor: pointer; }
-          .delete-btn { background-color: #dc3545; color: white; border: none; }
-          .edit-btn { background-color: #007bff; color: white; border: none; }
-          .delete-btn:hover { background-color: #c82333; }
-          .edit-btn:hover { background-color: #0056b3; }
-          .form-container { display: none; margin-top: 20px; }
-          .form-container.active { display: block; }
-          label { display: block; margin-top: 10px; }
-          input, textarea, select { width: 100%; padding: 8px; margin-top: 5px; }
-          button[type="submit"] { margin-top: 15px; padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; }
-          button[type="submit"]:hover { background-color: #0056b3; }
-          .cancel-btn { background-color: #6c757d; color: white; margin-left: 10px; }
-          .cancel-btn:hover { background-color: #5a6268; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>後端管理平台 - 事件管理</h1>
-          <form action="/admin/add" method="POST" id="addForm">
-            <h2>新增事件</h2>
-            <label for="start">開始日期 (YYYY-MM-DD):</label>
-            <input type="date" id="start" name="start" required>
+    res.send(
+      `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>後端管理平台 - 事件管理</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div class="container header-content">
+      <h1 class="site-title">事件管理系統</h1>
+      <nav class="nav-menu">
+        <a href="/admin">首頁</a>
+        <a href="#" id="exportDataBtn">匯出資料</a>
+        <a href="#" id="printBtn">列印</a>
+      </nav>
+    </div>
+  </header>
 
-            <label for="end">結束日期 (YYYY-MM-DD，可選):</label>
-            <input type="date" id="end" name="end">
+  <div class="container" id="mainContent">
+    <div id="statusMessages"></div>
 
-            <label for="title_zh">標題（中文）:</label>
-            <input type="text" id="title_zh" name="title_zh" required>
-
-            <label for="title_en">標題（英文）:</label>
-            <input type="text" id="title_en" name="title_en">
-
-            <label for="description_zh">描述（中文）:</label>
-            <textarea id="description_zh" name="description_zh"></textarea>
-
-            <label for="description_en">描述（英文）:</label>
-            <textarea id="description_en" name="description_en"></textarea>
-
-            <label for="type">事件類型:</label>
-            <select id="type" name="type">
-              <option value="important-exam">重要考試</option>
-              <option value="school-activity">學校活動</option>
-              <option value="announcement">公告</option>
-              <option value="holiday">假期</option>
-            </select>
-
-            <label for="grade">年級標籤:</label>
-            <select id="grade" name="grade" multiple>
-              <option value="grade-1">高一</option>
-              <option value="grade-2">高二</option>
-              <option value="grade-3">高三</option>
-              <option value="all-grades">全年級</option>
-            </select>
-
-            <label for="link">超連結 (可選):</label>
-            <input type="url" id="link" name="link" placeholder="https://example.com">
-
-            <button type="submit">新增事件</button>
-          </form>
-
-          <div class="event-list">
-            <h2>現有事件</h2>
-            ${events.map(event => `
-              <div class="event-item">
-                <h3>${event.title_zh} (${event.title_en || '無'})</h3>
-                <p><strong>開始日期:</strong> ${event.start}</p>
-                <p><strong>結束日期:</strong> ${event.end_date || '無'}</p>
-                <p><strong>類型:</strong> ${event.type}</p>
-                <p><strong>年級:</strong> ${event.grade}</p>
-                <p><strong>描述 (中文):</strong> ${event.description_zh}</p>
-                <p><strong>描述 (英文):</strong> ${event.description_en}</p>
-                <p><strong>連結:</strong> <a href="${event.link}" target="_blank">${event.link || '無'}</a></p>
-                <div class="actions">
-                  <form action="/admin/delete" method="POST" style="display:inline;" onsubmit="return confirm('確定要刪除此事件嗎？');">
-                    <input type="hidden" name="id" value="${event.id}">
-                    <button type="submit" class="delete-btn">刪除</button>
-                  </form>
-                  <button class="edit-btn" onclick="showEditForm(${event.id}, '${event.start}', '${event.end_date || ''}', '${event.title_zh}', '${event.title_en}', '${event.description_zh}', '${event.description_en}', '${event.type}', '${event.grade}', '${event.link || ''}')">修改</button>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-
-          <div class="form-container" id="editFormContainer">
-            <h2>修改事件</h2>
-            <form action="/admin/update" method="POST" id="editForm">
-              <input type="hidden" id="editId" name="id">
-              <label for="editStart">開始日期 (YYYY-MM-DD):</label>
-              <input type="date" id="editStart" name="start" required>
-
-              <label for="editEnd">結束日期 (YYYY-MM-DD，可選):</label>
-              <input type="date" id="editEnd" name="end">
-
-              <label for="editTitle_zh">標題（中文）:</label>
-              <input type="text" id="editTitle_zh" name="title_zh" required>
-
-              <label for="editTitle_en">標題（英文）:</label>
-              <input type="text" id="editTitle_en" name="title_en">
-
-              <label for="editDescription_zh">描述（中文）:</label>
-              <textarea id="editDescription_zh" name="description_zh"></textarea>
-
-              <label for="editDescription_en">描述（英文）:</label>
-              <textarea id="editDescription_en" name="description_en"></textarea>
-
-              <label for="editType">事件類型:</label>
-              <select id="editType" name="type">
-                <option value="important-exam">重要考試</option>
-                <option value="school-activity">學校活動</option>
-                <option value="announcement">公告</option>
-                <option value="holiday">假期</option>
-              </select>
-
-              <label for="editGrade">年級標籤:</label>
-              <select id="editGrade" name="grade" multiple>
-                <option value="grade-1">高一</option>
-                <option value="grade-2">高二</option>
-                <option value="grade-3">高三</option>
-                <option value="all-grades">全年級</option>
-              </select>
-
-              <label for="editLink">超連結 (可選):</label>
-              <input type="url" id="editLink" name="link" placeholder="https://example.com">
-
-              <button type="submit">儲存修改</button>
-              <button type="button" class="cancel-btn" onclick="hideEditForm()">取消</button>
-            </form>
-          </div>
-
-          <script>
-            function showEditForm(id, start, end, title_zh, title_en, description_zh, description_en, type, grade, link) {
-              document.getElementById('editId').value = id;
-              document.getElementById('editStart').value = start;
-              document.getElementById('editEnd').value = end;
-              document.getElementById('editTitle_zh').value = title_zh;
-              document.getElementById('editTitle_en').value = title_en;
-              document.getElementById('editDescription_zh').value = description_zh;
-              document.getElementById('editDescription_en').value = description_en;
-              document.getElementById('editType').value = type;
-              document.getElementById('editGrade').value = grade.split(',').filter(g => g);
-              document.getElementById('editLink').value = link;
-              document.getElementById('editFormContainer').classList.add('active');
-            }
-
-            function hideEditForm() {
-              document.getElementById('editFormContainer').classList.remove('active');
-            }
-          </script>
+    <div class="filters">
+      <h2>搜尋與篩選</h2>
+      <div class="filter-row">
+        <div class="search-input">
+          <label for="searchInput">搜尋關鍵字:</label>
+          <input type="text" id="searchInput" placeholder="輸入標題、描述關鍵字...">
         </div>
-      </body>
-      </html>`);
+        <div class="form-group">
+          <label for="filterType">事件類型:</label>
+          <select id="filterType">
+            <option value="">全部類型</option>
+            <option value="important-exam">重要考試</option>
+            <option value="school-activity">學校活動</option>
+            <option value="announcement">公告</option>
+            <option value="holiday">假期</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="filterGrade">年級:</label>
+          <select id="filterGrade">
+            <option value="">全部年級</option>
+            <option value="grade-1">高一</option>
+            <option value="grade-2">高二</option>
+            <option value="grade-3">高三</option>
+            <option value="all-grades">全年級</option>
+          </select>
+        </div>
+      </div>
+      <div class="filter-row">
+        <div class="form-group">
+          <label for="filterDateStart">開始日期:</label>
+          <input type="date" id="filterDateStart">
+        </div>
+        <div class="form-group">
+          <label for="filterDateEnd">結束日期:</label>
+          <input type="date" id="filterDateEnd">
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+          <button id="filterBtn" class="filter-button">套用篩選</button>
+          <button id="resetFilterBtn" class="filter-reset">重設</button>
+        </div>
+      </div>
+    </div>
+
+    <form action="/admin/add" method="POST" id="addForm" class="add-event-form">
+      <h2>新增事件</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="start">開始日期 (YYYY-MM-DD):</label>
+          <input type="date" id="start" name="start" required>
+        </div>
+        <div class="form-group">
+          <label for="end">結束日期 (YYYY-MM-DD，可選):</label>
+          <input type="date" id="end" name="end">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="title_zh">標題（中文）:</label>
+          <input type="text" id="title_zh" name="title_zh" required>
+        </div>
+        <div class="form-group">
+          <label for="title_en">標題（英文）:</label>
+          <input type="text" id="title_en" name="title_en">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="description_zh">描述（中文）:</label>
+          <textarea id="description_zh" name="description_zh"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="description_en">描述（英文）:</label>
+          <textarea id="description_en" name="description_en"></textarea>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="type">事件類型:</label>
+          <select id="type" name="type">
+            <option value="important-exam">重要考試</option>
+            <option value="school-activity">學校活動</option>
+            <option value="announcement">公告</option>
+            <option value="holiday">假期</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="grade">年級標籤:</label>
+          <select id="grade" name="grade" multiple>
+            <option value="grade-1">高一</option>
+            <option value="grade-2">高二</option>
+            <option value="grade-3">高三</option>
+            <option value="all-grades">全年級</option>
+          </select>
+          <small>按住 Ctrl (Windows) 或 Command (Mac) 可多選</small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="link">超連結 (可選):</label>
+          <input type="url" id="link" name="link" placeholder="https://example.com">
+        </div>
+      </div>
+
+      <button type="submit">新增事件</button>
+    </form>
+
+    <div class="event-list">
+      <h2>現有事件 <span id="eventCount" class="event-count"></span></h2>
+      <div id="eventContainer"></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+  <!-- Edit Form Modal -->
+  <div class="form-container" id="editFormContainer">
+    <form action="/admin/update" method="POST" id="editForm">
+      <h2>修改事件</h2>
+      <input type="hidden" id="editId" name="id">
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="editStart">開始日期 (YYYY-MM-DD):</label>
+          <input type="date" id="editStart" name="start" required>
+        </div>
+        <div class="form-group">
+          <label for="editEnd">結束日期 (YYYY-MM-DD，可選):</label>
+          <input type="date" id="editEnd" name="end">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="editTitle_zh">標題（中文）:</label>
+          <input type="text" id="editTitle_zh" name="title_zh" required>
+        </div>
+        <div class="form-group">
+          <label for="editTitle_en">標題（英文）:</label>
+          <input type="text" id="editTitle_en" name="title_en">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="editDescription_zh">描述（中文）:</label>
+          <textarea id="editDescription_zh" name="description_zh"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="editDescription_en">描述（英文）:</label>
+          <textarea id="editDescription_en" name="description_en"></textarea>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="editType">事件類型:</label>
+          <select id="editType" name="type">
+            <option value="important-exam">重要考試</option>
+            <option value="school-activity">學校活動</option>
+            <option value="announcement">公告</option>
+            <option value="holiday">假期</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="editGrade">年級標籤:</label>
+          <select id="editGrade" name="grade" multiple>
+            <option value="grade-1">高一</option>
+            <option value="grade-2">高二</option>
+            <option value="grade-3">高三</option>
+            <option value="all-grades">全年級</option>
+          </select>
+          <small>按住 Ctrl (Windows) 或 Command (Mac) 可多選</small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="editLink">超連結 (可選):</label>
+          <input type="url" id="editLink" name="link" placeholder="https://example.com">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit">儲存修改</button>
+        <button type="button" class="cancel-btn" onclick="hideEditForm()">取消</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" class="modal">
+    <div class="modal-content">
+      <h3 class="modal-title">確認刪除</h3>
+      <p>確定要刪除此事件嗎？此操作無法復原。</p>
+      <div class="modal-footer">
+        <button id="cancelDelete" class="cancel-btn">取消</button>
+        <button id="confirmDelete" class="confirm-btn">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div class="loading" id="loadingSpinner">
+    <div class="spinner"></div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>`);
   } catch (err) {
     console.error('獲取事件失敗:', err.stack);
     res.status(500).send('伺服器錯誤: 無法加載事件資料');
