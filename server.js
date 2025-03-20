@@ -122,8 +122,6 @@ app.get('/api/events', async (req, res) => {
             end: event.end_date ? event.end_date.toISOString().split('T')[0] : null,
             title_zh: event.title_zh,
             title_en: event.title_en || '',
-            description_zh: event.description_zh || '',
-            description_en: event.description_en || '',
             type: event.type,
             grade: event.grade,
             link: event.link || ''
@@ -221,16 +219,6 @@ app.get('/api/events', async (req, res) => {
                     </div>
                   </div>
       
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label for="description_zh">描述（中文）:</label>
-                      <textarea id="description_zh" name="description_zh"></textarea>
-                    </div>
-                    <div class="form-group">
-                      <label for="description_en">描述（英文）:</label>
-                      <textarea id="description_en" name="description_en"></textarea>
-                    </div>
-                  </div>
       
                   <div class="form-row">
                     <div class="form-group">
