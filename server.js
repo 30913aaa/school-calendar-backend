@@ -113,265 +113,198 @@ app.get('/api/events', async (req, res) => {
 });
 
 // 管理平台頁面
-app.get('/admin', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM events');
-    const events = result.rows.map(event => ({
-      id: event.id,
-      start: event.start.toISOString().split('T')[0],
-      end: event.end_date ? event.end_date.toISOString().split('T')[0] : null,
-      title_zh: event.title_zh,
-      title_en: event.title_en || '',
-      description_zh: event.description_zh || '',
-      description_en: event.description_en || '',
-      type: event.type,
-      grade: event.grade,
-      link: event.link || ''
-    })).sort((a, b) => a.start.localeCompare(b.start));
-
-    res.send(
-      `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>後端管理平台 - 事件管理</title>
-  <link rel="stylesheet" href="/styles.css">
-  <script src="/admin.js"></script>
-</head>
-<body>
-  <header>
-    <div class="container header-content">
-      <h1 class="site-title">事件管理系統</h1>
-      <nav class="nav-menu">
-        <a href="/admin">首頁</a>
-        <a href="#" id="exportDataBtn">匯出資料</a>
-        <a href="#" id="printBtn">列印</a>
-      </nav>
-    </div>
-  </header>
-
-  <div class="container" id="mainContent">
-    <div id="statusMessages"></div>
-
-    <div class="filters">
-      <h2>搜尋與篩選</h2>
-      <div class="filter-row">
-        <div class="search-input">
-          <label for="searchInput">搜尋關鍵字:</label>
-          <input type="text" id="searchInput" placeholder="輸入標題、描述關鍵字...">
-        </div>
-        <div class="form-group">
-          <label for="filterType">事件類型:</label>
-          <select id="filterType">
-            <option value="">全部類型</option>
-            <option value="important-exam">重要考試</option>
-            <option value="school-activity">學校活動</option>
-            <option value="announcement">公告</option>
-            <option value="holiday">假期</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="filterGrade">年級:</label>
-          <select id="filterGrade">
-            <option value="">全部年級</option>
-            <option value="grade-1">高一</option>
-            <option value="grade-2">高二</option>
-            <option value="grade-3">高三</option>
-            <option value="all-grades">全年級</option>
-          </select>
-        </div>
-      </div>
-      <div class="filter-row">
-        <div class="form-group">
-          <label for="filterDateStart">開始日期:</label>
-          <input type="date" id="filterDateStart">
-        </div>
-        <div class="form-group">
-          <label for="filterDateEnd">結束日期:</label>
-          <input type="date" id="filterDateEnd">
-        </div>
-        <div class="form-group" style="align-self: flex-end;">
-          <button id="filterBtn" class="filter-button">套用篩選</button>
-          <button id="resetFilterBtn" class="filter-reset">重設</button>
-        </div>
-      </div>
-    </div>
-
-    <form action="/admin/add" method="POST" id="addForm" class="add-event-form">
-      <h2>新增事件</h2>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="start">開始日期 (YYYY-MM-DD):</label>
-          <input type="date" id="start" name="start" required>
-        </div>
-        <div class="form-group">
-          <label for="end">結束日期 (YYYY-MM-DD，可選):</label>
-          <input type="date" id="end" name="end">
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="title_zh">標題（中文）:</label>
-          <input type="text" id="title_zh" name="title_zh" required>
-        </div>
-        <div class="form-group">
-          <label for="title_en">標題（英文）:</label>
-          <input type="text" id="title_en" name="title_en">
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="description_zh">描述（中文）:</label>
-          <textarea id="description_zh" name="description_zh"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="description_en">描述（英文）:</label>
-          <textarea id="description_en" name="description_en"></textarea>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="type">事件類型:</label>
-          <select id="type" name="type">
-            <option value="important-exam">重要考試</option>
-            <option value="school-activity">學校活動</option>
-            <option value="announcement">公告</option>
-            <option value="holiday">假期</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="grade">年級標籤:</label>
-          <select id="grade" name="grade" multiple>
-            <option value="grade-1">高一</option>
-            <option value="grade-2">高二</option>
-            <option value="grade-3">高三</option>
-            <option value="all-grades">全年級</option>
-          </select>
-          <small>按住 Ctrl (Windows) 或 Command (Mac) 可多選</small>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="link">超連結 (可選):</label>
-          <input type="url" id="link" name="link" placeholder="https://example.com">
-        </div>
-      </div>
-
-      <button type="submit">新增事件</button>
-    </form>
-
-    <div class="event-list">
-      <h2>現有事件 <span id="eventCount" class="event-count"></span></h2>
-      <div id="eventContainer"></div>
-      <div class="pagination" id="pagination"></div>
-    </div>
-  </div>
-
-  <!-- Edit Form Modal -->
-  <div class="form-container" id="editFormContainer">
-    <form action="/admin/update" method="POST" id="editForm">
-      <h2>修改事件</h2>
-      <input type="hidden" id="editId" name="id">
+      app.get('/admin', async (req, res) => {
+        try {
+          const result = await pool.query('SELECT * FROM events');
+          const events = result.rows.map(event => ({
+            id: event.id,
+            start: event.start.toISOString().split('T')[0],
+            end: event.end_date ? event.end_date.toISOString().split('T')[0] : null,
+            title_zh: event.title_zh,
+            title_en: event.title_en || '',
+            description_zh: event.description_zh || '',
+            description_en: event.description_en || '',
+            type: event.type,
+            grade: event.grade,
+            link: event.link || ''
+          })).sort((a, b) => a.start.localeCompare(b.start));
       
-      <div class="form-row">
-        <div class="form-group">
-          <label for="editStart">開始日期 (YYYY-MM-DD):</label>
-          <input type="date" id="editStart" name="start" required>
-        </div>
-        <div class="form-group">
-          <label for="editEnd">結束日期 (YYYY-MM-DD，可選):</label>
-          <input type="date" id="editEnd" name="end">
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="editTitle_zh">標題（中文）:</label>
-          <input type="text" id="editTitle_zh" name="title_zh" required>
-        </div>
-        <div class="form-group">
-          <label for="editTitle_en">標題（英文）:</label>
-          <input type="text" id="editTitle_en" name="title_en">
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="editDescription_zh">描述（中文）:</label>
-          <textarea id="editDescription_zh" name="description_zh"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="editDescription_en">描述（英文）:</label>
-          <textarea id="editDescription_en" name="description_en"></textarea>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="editType">事件類型:</label>
-          <select id="editType" name="type">
-            <option value="important-exam">重要考試</option>
-            <option value="school-activity">學校活動</option>
-            <option value="announcement">公告</option>
-            <option value="holiday">假期</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="editGrade">年級標籤:</label>
-          <select id="editGrade" name="grade" multiple>
-            <option value="grade-1">高一</option>
-            <option value="grade-2">高二</option>
-            <option value="grade-3">高三</option>
-            <option value="all-grades">全年級</option>
-          </select>
-          <small>按住 Ctrl (Windows) 或 Command (Mac) 可多選</small>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="editLink">超連結 (可選):</label>
-          <input type="url" id="editLink" name="link" placeholder="https://example.com">
-        </div>
-      </div>
-
-      <div class="actions">
-        <button type="submit">儲存修改</button>
-        <button type="button" class="cancel-btn" onclick="hideEditForm()">取消</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- Confirmation Modal -->
-  <div id="confirmModal" class="modal">
-    <div class="modal-content">
-      <h3 class="modal-title">確認刪除</h3>
-      <p>確定要刪除此事件嗎？此操作無法復原。</p>
-      <div class="modal-footer">
-        <button id="cancelDelete" class="cancel-btn">取消</button>
-        <button id="confirmDelete" class="confirm-btn">確認刪除</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Loading Spinner -->
-  <div class="loading" id="loadingSpinner">
-    <div class="spinner"></div>
-  </div>
-
-  <script src="admin.js"></script>
-</body>
-</html>`);
-  } catch (err) {
-    console.error('獲取事件失敗:', err.stack);
-    res.status(500).send('伺服器錯誤: 無法加載事件資料');
-  }
-});
+          res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>後端管理平台 - 事件管理</title>
+              <link rel="stylesheet" href="/styles.css">
+            </head>
+            <body>
+              <header>
+                <div class="container header-content">
+                  <h1 class="site-title">事件管理系統</h1>
+                  <nav class="nav-menu">
+                    <a href="/admin">首頁</a>
+                    <a href="#" id="exportDataBtn">匯出資料</a>
+                    <a href="#" id="printBtn">列印</a>
+                  </nav>
+                </div>
+              </header>
+      
+              <div class="container" id="mainContent">
+                <div id="statusMessages"></div>
+      
+                <div class="filters">
+                  <h2>搜尋與篩選</h2>
+                  <div class="filter-row">
+                    <div class="search-input">
+                      <label for="searchInput">搜尋關鍵字:</label>
+                      <input type="text" id="searchInput" placeholder="輸入標題、描述關鍵字...">
+                    </div>
+                    <div class="form-group">
+                      <label for="filterType">事件類型:</label>
+                      <select id="filterType">
+                        <option value="">全部類型</option>
+                        <option value="important-exam">重要考試</option>
+                        <option value="school-activity">學校活動</option>
+                        <option value="announcement">公告</option>
+                        <option value="holiday">假期</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="filterGrade">年級:</label>
+                      <select id="filterGrade">
+                        <option value="">全部年級</option>
+                        <option value="grade-1">高一</option>
+                        <option value="grade-2">高二</option>
+                        <option value="grade-3">高三</option>
+                        <option value="all-grades">全年級</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="filter-row">
+                    <div class="form-group">
+                      <label for="filterDateStart">開始日期:</label>
+                      <input type="date" id="filterDateStart">
+                    </div>
+                    <div class="form-group">
+                      <label for="filterDateEnd">結束日期:</label>
+                      <input type="date" id="filterDateEnd">
+                    </div>
+                    <div class="form-group" style="align-self: flex-end;">
+                      <button id="filterBtn" class="filter-button">套用篩選</button>
+                      <button id="resetFilterBtn" class="filter-reset">重設</button>
+                    </div>
+                  </div>
+                </div>
+      
+                <form action="/admin/add" method="POST" id="addForm" class="add-event-form">
+                  <h2>新增事件</h2>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="start">開始日期 (YYYY-MM-DD):</label>
+                      <input type="date" id="start" name="start" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="end">結束日期 (YYYY-MM-DD，可選):</label>
+                      <input type="date" id="end" name="end">
+                    </div>
+                  </div>
+      
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="title_zh">標題（中文）:</label>
+                      <input type="text" id="title_zh" name="title_zh" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="title_en">標題（英文）:</label>
+                      <input type="text" id="title_en" name="title_en">
+                    </div>
+                  </div>
+      
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="description_zh">描述（中文）:</label>
+                      <textarea id="description_zh" name="description_zh"></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label for="description_en">描述（英文）:</label>
+                      <textarea id="description_en" name="description_en"></textarea>
+                    </div>
+                  </div>
+      
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="type">事件類型:</label>
+                      <select id="type" name="type">
+                        <option value="important-exam">重要考試</option>
+                        <option value="school-activity">學校活動</option>
+                        <option value="announcement">公告</option>
+                        <option value="holiday">假期</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="grade">年級標籤:</label>
+                      <select id="grade" name="grade" multiple>
+                        <option value="grade-1">高一</option>
+                        <option value="grade-2">高二</option>
+                        <option value="grade-3">高三</option>
+                        <option value="all-grades">全年級</option>
+                      </select>
+                      <small>按住 Ctrl (Windows) 或 Command (Mac) 可多選</small>
+                    </div>
+                  </div>
+      
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="link">超連結 (可選):</label>
+                      <input type="url" id="link" name="link" placeholder="https://example.com">
+                    </div>
+                  </div>
+      
+                  <button type="submit">新增事件</button>
+                </form>
+      
+                <div class="event-list">
+                  <h2>現有事件 <span id="eventCount" class="event-count">(${events.length})</span></h2>
+                  <div id="eventContainer">
+                    ${events.length === 0 ? '<p>目前沒有事件。</p>' : events.map(event => `
+                      <div class="event-item">
+                        <h3>${event.title_zh}</h3>
+                        <p>日期: ${event.start}${event.end ? ` - ${event.end}` : ''}</p>
+                        <p>類型: ${event.type}</p>
+                        <p>年級: ${event.grade}</p>
+                        <p>描述: ${event.description_zh}</p>
+                        <form action="/admin/delete" method="POST" style="display:inline;">
+                          <input type="hidden" name="id" value="${event.id}">
+                          <button type="submit">刪除</button>
+                        </form>
+                        <form action="/admin/update" method="POST" style="display:inline;">
+                          <input type="hidden" name="id" value="${event.id}">
+                          <input type="hidden" name="start" value="${event.start}">
+                          <input type="hidden" name="end" value="${event.end || ''}">
+                          <input type="hidden" name="title_zh" value="${event.title_zh}">
+                          <input type="hidden" name="title_en" value="${event.title_en}">
+                          <input type="hidden" name="description_zh" value="${event.description_zh}">
+                          <input type="hidden" name="description_en" value="${event.description_en}">
+                          <input type="hidden" name="type" value="${event.type}">
+                          <input type="hidden" name="grade" value="${event.grade}">
+                          <input type="hidden" name="link" value="${event.link}">
+                          <button type="submit">編輯</button>
+                        </form>
+                      </div>
+                    `).join('')}
+                  </div>
+                  <div class="pagination" id="pagination"></div>
+                </div>
+              </div>
+            </body>
+            </html>
+          `);
+        } catch (err) {
+          console.error('獲取事件失敗:', err.stack);
+          res.status(500).send('伺服器錯誤: 無法加載事件資料');
+        }
+      });
 
 // 新增事件
 app.post('/admin/add', async (req, res) => {
