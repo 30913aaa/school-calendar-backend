@@ -1,36 +1,156 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg');
+const xss = require('xss'); // 新增XSS防護
 
 const app = express();
 const port = process.env.PORT || 3000;
-const path = require('path');
 
-// 服務當前目錄下的靜態檔案
-app.use(express.static(__dirname));
-
-// 檢查必要的環境變數
-const requiredEnvVars = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'DB_PORT'];
-requiredEnvVars.forEach(envVar => {
-  if (!process.env[envVar]) {
-    console.error(`缺少必要的環境變數: ${envVar}`);
-    process.exit(1);
+// 強化安全設定
+app.use(express.static(__dirname, {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   }
-});
+}));
 
-// 配置資料庫連線
+// 強化body解析
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+
+// 資料庫連線池強化設定
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
-  ssl: {
-    rejectUnauthorized: false // Render 的 PostgreSQL 所需
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+  ssl: { rejectUnauthorized: false }
+});
+
+// 強化事件新增API
+app.post('/admin/add', async (req, res) => {
+  try {
+    // XSS清理與數據驗證
+    const cleanData = {
+      start: xss(req.body.start),
+      end: xss(req.body.end || ''),
+      title_zh: xss(req.body.title_zh.trim()),
+      title_en: xss(req.body.title_en?.trim() || ''),
+      description_zh: xss(req.body.description_zh || ''),
+      description_en: xss(req.body.description_en || ''),
+      type: xss(req.body.type),
+      grade: Array.isArray(req.body.grade) ? req.body.grade : [],
+      link: xss(req.body.link || '')
+    };
+
+    // 驗證必要字段
+    if (!cleanData.start || !cleanData.title_zh) {
+      throw new Error('缺少必要字段');
+    }
+
+    // 處理年級資料
+    const gradeString = cleanData.grade.length > 0 ? 
+      cleanData.grade.join(',') : 'all-grades';
+
+    // 插入資料庫
+    const result = await pool.query(
+      `INSERT INTO events (
+        start, end_date, title_zh, title_en,
+        description_zh, description_en, type, grade, link
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *`,
+      [
+        cleanData.start,
+        cleanData.end || null,
+        cleanData.title_zh,
+        cleanData.title_en,
+        cleanData.description_zh,
+        cleanData.description_en,
+        cleanData.type,
+        gradeString,
+        cleanData.link
+      ]
+    );
+
+    res.status(201).json({ 
+      success: true,
+      event: result.rows[0]
+    });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] 新增事件錯誤:`, err.stack);
+    res.status(500).json({
+      success: false,
+      message: err.message || '伺服器錯誤'
+    });
   }
 });
 
+// 強化事件獲取API（含後端分頁）
+app.get('/api/events', async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 10,
+      search, type, grade, start, end 
+    } = req.query;
+
+    // 構建查詢條件
+    const whereClauses = [];
+    const queryParams = [];
+    
+    if (search) {
+      whereClauses.push(
+        `(LOWER(title_zh) LIKE $${queryParams.length + 1} OR
+         LOWER(description_zh) LIKE $${queryParams.length + 1})`
+      );
+      queryParams.push(`%${search.toLowerCase()}%`);
+    }
+
+    // ...其他篩選條件...
+
+    // 分頁處理
+    const offset = (page - 1) * limit;
+    const finalQuery = `
+      SELECT * FROM events
+      ${whereClauses.length ? 'WHERE ' + whereClauses.join(' AND ') : ''}
+      ORDER BY start ASC
+      LIMIT $${queryParams.length + 1}
+      OFFSET $${queryParams.length + 2}
+    `;
+    
+    queryParams.push(limit, offset);
+
+    const result = await pool.query(finalQuery, queryParams);
+    
+    // 格式轉換
+    const events = result.rows.map(event => ({
+      ...event,
+      grade: event.grade.split(','), // 轉換為陣列
+      start: event.start.toISOString().split('T')[0],
+      end: event.end_date?.toISOString().split('T')[0] || null
+    }));
+
+    res.json({
+      success: true,
+      data: events,
+      pagination: {
+        currentPage: Number(page),
+        totalPages: Math.ceil(result.rowCount / limit)
+      }
+    });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] 獲取事件錯誤:`, err.stack);
+    res.status(500).json({
+      success: false,
+      message: '資料庫查詢失敗'
+    });
+  }
+});
 // 記錄使用的配置
 console.log('嘗試以以下配置連線:', {
   user: process.env.DB_USER,
@@ -550,7 +670,96 @@ app.post('/admin/add', async (req, res) => {
     res.status(500).send('伺服器錯誤: 無法新增事件');
   }
 });
+// 安全渲染函數
+function safeRender(content) {
+  const div = document.createElement('div');
+  div.textContent = content;
+  return div.innerHTML;
+}
 
+// 強化事件渲染
+function renderEventItem(event) {
+  const item = document.createElement('div');
+  item.className = 'event-item';
+  
+  // 安全處理所有動態內容
+  const title = document.createElement('h3');
+  title.textContent = safeRender(event.title_zh);
+  
+  const description = document.createElement('div');
+  description.innerHTML = `
+    ${event.description_zh ? 
+      `<p>中文描述: ${safeRender(event.description_zh)}</p>` : ''}
+    ${event.description_en ? 
+      `<p>英文描述: ${safeRender(event.description_en)}</p>` : ''}
+  `;
+  
+  item.append(title, description);
+  return item;
+}
+
+// 強化篩選功能
+async function filterEvents() {
+  try {
+    const params = new URLSearchParams({
+      search: document.getElementById('searchInput').value,
+      type: document.getElementById('filterType').value,
+      grade: document.getElementById('filterGrade').value,
+      page: currentPage,
+      limit: itemsPerPage
+    });
+
+    const response = await fetch(`/api/events?${params}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP錯誤! 狀態碼: ${response.status}`);
+    }
+    
+    const { data, pagination } = await response.json();
+    
+    // 安全渲染
+    const fragment = document.createDocumentFragment();
+    data.forEach(event => {
+      fragment.appendChild(renderEventItem(event));
+    });
+    
+    eventContainer.innerHTML = '';
+    eventContainer.appendChild(fragment);
+    
+    renderPagination(pagination);
+    
+  } catch (error) {
+    showError(`篩選失敗: ${error.message}`);
+  }
+}
+
+// 強化CSV匯出
+document.getElementById('exportDataBtn').addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/events?limit=10000');
+    const { data } = await response.json();
+    
+    const BOM = '\uFEFF';
+    const csvContent = data.map(event => 
+      `"${event.id}","${event.start}","${event.end || ''}",` +
+      `"${event.title_zh.replace(/"/g, '""')}","${event.title_en.replace(/"/g, '""')}",` +
+      `"${event.description_zh.replace(/"/g, '""')}","${event.description_en.replace(/"/g, '""')}",` +
+      `"${event.type}","${event.grade.join(',')}","${event.link}"`
+    ).join('\n');
+
+    const blob = new Blob([BOM + 'ID,開始日期,結束日期,標題(中),標題(英),描述(中),描述(英),類型,年級,連結\n' + csvContent], {
+      type: 'text/csv;charset=utf-8;'
+    });
+    
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `events_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+    
+  } catch (error) {
+    showError(`匯出失敗: ${error.message}`);
+  }
+});
 // 刪除事件
 app.post('/admin/delete', async (req, res) => {
   const { id } = req.body;
